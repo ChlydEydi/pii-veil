@@ -7,6 +7,12 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+try:
+    import cryptography  # noqa: F401  (only needed for the encrypted vault)
+    HAS_CRYPTO = True
+except ImportError:
+    HAS_CRYPTO = False
+
 from veil import LocalLLMDetector, RuleDetector, Shield
 from veil.llm import MockCloudAI
 from veil.proxy import make_server
@@ -84,6 +90,7 @@ class ShieldTests(unittest.TestCase):
         self.assertNotIn("ALLab", masked)
         self.assertEqual(shield.unmask(masked), "ALLab is running Project Falcon.")
 
+    @unittest.skipUnless(HAS_CRYPTO, "optional: pip install cryptography")
     def test_encrypted_vault_round_trip(self):
         shield = Shield()
         masked = shield.mask(SAMPLE)
@@ -136,9 +143,11 @@ class NetworkTests(unittest.TestCase):
                 f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
                 json.dumps({"model": "x", "messages": [{"role": "user", "content": SAMPLE}]}).encode(),
                 {"Content-Type": "application/json"})
-            answer = json.load(urllib.request.urlopen(req))["choices"][0]["message"]["content"]
+            with urllib.request.urlopen(req) as resp:
+                answer = json.load(resp)["choices"][0]["message"]["content"]
         finally:
             server.shutdown()
+            server.server_close()
         self.assertIn("Sarah Tan", answer)
         for s in SECRETS:
             self.assertFalse(contains(ai.received[0], s))
@@ -152,6 +161,7 @@ class NetworkTests(unittest.TestCase):
             masked = shield.mask("Sarah Tan from Globex Corporation called.")
         finally:
             srv.httpd.shutdown()
+            srv.httpd.server_close()
         self.assertNotIn("Globex", masked)
         self.assertNotIn("Sarah", masked)
         self.assertEqual(shield.unmask(masked), "Sarah Tan from Globex Corporation called.")

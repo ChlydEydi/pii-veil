@@ -24,7 +24,8 @@ Python 3.10+ and nothing else. The encrypted vault feature also needs `cryptogra
 ```bash
 git clone <this repo> && cd pii-veil
 python -m veil demo            # full round trip, no API key needed
-python -m unittest -v          # 14 tests
+python -m unittest -v          # 14 tests (vault test is skipped until you
+                               # run: python -m pip install cryptography)
 ```
 
 The demo prints six panels: the original email, **what the cloud AI receives**,
@@ -38,9 +39,9 @@ export ANTHROPIC_API_KEY=...
 python -m veil ask examples/customer_email.txt --backend anthropic --show
 
 export OPENAI_API_KEY=...
-python -m veil ask my_file.txt --backend openai --prompt "Summarise this"
+python -m veil ask examples/customer_email.txt --backend openai --prompt "Summarise this"
 
-python -m veil ask my_file.txt --backend ollama      # fully local model
+python -m veil ask examples/customer_email.txt --backend ollama      # fully local model
 ```
 
 ### As a drop-in proxy (no code changes to your app)

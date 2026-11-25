@@ -36,7 +36,12 @@ def _shield(args) -> Shield:
 def _read(path: str | None) -> str:
     if path in (None, "-"):
         return SAMPLE.read_text(encoding="utf-8") if path is None else sys.stdin.read()
-    return Path(path).read_text(encoding="utf-8")
+    p = Path(path)
+    if not p.is_file():
+        raise SystemExit(f"File not found: {path}\n"
+                         f"Try the sample:  python -m veil mask examples/customer_email.txt\n"
+                         f"Or pipe text in: echo Call John Smith on 9123 4567 | python -m veil mask -")
+    return p.read_text(encoding="utf-8")
 
 
 def _box(title: str, body: str) -> None:

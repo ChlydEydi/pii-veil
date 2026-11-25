@@ -90,7 +90,7 @@ class Shield:
     # ------------------------------------------------------------ vault I/O
     def save(self, path: str | Path, password: str) -> None:
         """Persist the mapping, encrypted (Fernet / AES-128-CBC + HMAC)."""
-        from cryptography.fernet import Fernet
+        Fernet = _fernet()
 
         payload = json.dumps({
             "secret": base64.b64encode(self.secret).decode(),
@@ -101,7 +101,7 @@ class Shield:
 
     @classmethod
     def load(cls, path: str | Path, password: str, detector=None) -> "Shield":
-        from cryptography.fernet import Fernet
+        Fernet = _fernet()
 
         data = json.loads(Fernet(_key_from_password(password)).decrypt(Path(path).read_bytes()))
         s = cls(detector=detector, secret=base64.b64decode(data["secret"]))
@@ -227,6 +227,15 @@ class Shield:
 
 
 # ---------------------------------------------------------------- helpers
+def _fernet():
+    try:
+        from cryptography.fernet import Fernet
+    except ImportError:
+        raise RuntimeError("The encrypted vault needs the 'cryptography' package: "
+                           "python -m pip install cryptography") from None
+    return Fernet
+
+
 def _key_from_password(password: str) -> bytes:
     raw = hashlib.pbkdf2_hmac("sha256", password.encode(), b"pii-veil-vault-v1", 200_000)
     return base64.urlsafe_b64encode(raw)
