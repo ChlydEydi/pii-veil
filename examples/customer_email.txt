@@ -1,0 +1,17 @@
+From: Sarah Tan <sarah.tan@acme-logistics.com>
+To: support@ourcompany.com
+
+Hi team,
+
+My manager John Smith asked me to follow up on order #48213. The parcel was
+supposed to reach our warehouse but never arrived. Mr Smith already called your
+hotline twice from +65 9123 4567 and nobody got back to him.
+
+For verification, my NRIC is S1234567D and the order was paid with card
+4111 1111 1111 1111. Our server at 192.168.10.24 also logged the failed
+delivery webhook from https://track.acme-logistics.com/orders/48213.
+
+Please reply to me or to John directly at john.smith@acme-logistics.com.
+
+Thanks,
+Sarah
