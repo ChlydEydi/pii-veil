@@ -112,6 +112,49 @@ class ShieldTests(unittest.TestCase):
             self.assertFalse(contains(ai.received[0], s))
 
 
+class DetectionTests(unittest.TestCase):
+    def test_lower_case_names_are_masked(self):
+        shield = Shield()
+        masked = shield.mask("call john smith 9123 4567, sarah said ok")
+        for s in ("john", "smith", "sarah", "9123 4567"):
+            self.assertFalse(contains(masked, s), f"{s!r} leaked")
+        self.assertTrue(masked.split()[1].islower())  # style kept: lower-case fake
+        self.assertEqual(shield.unmask(masked), "call john smith 9123 4567, sarah said ok")
+
+    def test_ordinary_words_are_not_treated_as_names(self):
+        text = "we will mark it as done, ha ha. may i ask a frank question?"
+        self.assertEqual(Shield().mask(text), text)
+
+    def test_capitalised_ambiguous_names_still_masked(self):
+        self.assertNotIn("Mark", Shield().mask("Please ask Mark Lee about it."))
+
+    def test_custom_names_become_fake_people(self):
+        shield = Shield(detector=RuleDetector(custom_names=["Chlyde Iza"]))
+        masked = shield.mask("Call john smith 9123 4567 chlyde iza")
+        self.assertFalse(contains(masked, "chlyde"))
+        fake = shield.tables["first"]["chlyde"]
+        from veil import fakes
+        self.assertIn(fake, fakes.FAKE_FIRST_MALE + fakes.FAKE_FIRST_FEMALE)
+        self.assertEqual(shield.unmask(masked), "Call john smith 9123 4567 chlyde iza")
+
+    def test_name_found_once_is_masked_later_in_any_case(self):
+        shield = Shield(detector=RuleDetector(custom_terms=["Chlyde Iza"]))
+        shield.mask("Hi Chlyde Iza")
+        shield.detector = RuleDetector()  # later messages: detector no longer knows it
+        masked = shield.mask("ping chlyde iza and CHLYDE IZA")
+        self.assertFalse(contains(masked, "chlyde iza"))
+
+    def test_remembered_names_survive_the_vault(self):
+        if not HAS_CRYPTO:
+            self.skipTest("optional: pip install cryptography")
+        shield = Shield(detector=RuleDetector(custom_terms=["Chlyde Iza"]))
+        shield.mask("Hi Chlyde Iza")
+        with tempfile.TemporaryDirectory() as d:
+            shield.save(Path(d) / "v.bin", "pw")
+            again = Shield.load(Path(d) / "v.bin", "pw")
+        self.assertFalse(contains(again.mask("chlyde iza again"), "chlyde"))
+
+
 class _JSONServer:
     """Tiny fake HTTP server for testing network pieces offline."""
 
@@ -155,16 +198,18 @@ class NetworkTests(unittest.TestCase):
     def test_local_llm_detector_adds_entities(self):
         # the "self-hosted model" finds a client name the regexes can't know about
         srv = _JSONServer(lambda body: {"choices": [{"message": {"content":
-              '{"entities":[{"text":"Globex Corporation","kind":"ORG"}]}'}}]})
+              '{"entities":[{"text":"Globex Corporation","kind":"ORG"},'
+              '{"text":"chlyde iza","kind":"PERSON"}]}'}}]})
+        text = "Sarah Tan from Globex Corporation called. Loop in Chlyde Iza."
         try:
             shield = Shield(detector=LocalLLMDetector(srv.url, "tiny"))
-            masked = shield.mask("Sarah Tan from Globex Corporation called.")
+            masked = shield.mask(text)
         finally:
             srv.httpd.shutdown()
             srv.httpd.server_close()
-        self.assertNotIn("Globex", masked)
-        self.assertNotIn("Sarah", masked)
-        self.assertEqual(shield.unmask(masked), "Sarah Tan from Globex Corporation called.")
+        for s in ("Globex", "Sarah", "Chlyde", "Iza"):
+            self.assertFalse(contains(masked, s), f"{s!r} leaked")
+        self.assertEqual(shield.unmask(masked), text)
 
 
 if __name__ == "__main__":

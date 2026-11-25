@@ -24,7 +24,7 @@ Python 3.10+ and nothing else. The encrypted vault feature also needs `cryptogra
 ```bash
 git clone <this repo> && cd pii-veil
 python -m veil demo            # full round trip, no API key needed
-python -m unittest -v          # 14 tests (vault test is skipped until you
+python -m unittest -v          # 20 tests (vault test is skipped until you
                                # run: python -m pip install cryptography)
 ```
 
@@ -43,6 +43,39 @@ python -m veil ask examples/customer_email.txt --backend openai --prompt "Summar
 
 python -m veil ask examples/customer_email.txt --backend ollama      # fully local model
 ```
+
+### Hiding names the tool doesn't know
+
+The built-in detector knows common first names, in any letter case ("John
+Smith" and "john smith"). For other people, such as colleagues, clients or
+usernames, you have two options:
+
+```bash
+# tell it who to hide (they become fake *people*)
+python -m veil mask notes.txt --names "chlyde iza,jowie"
+python -m veil mask notes.txt --names-file staff.txt     # one name per line
+
+# or let a small local AI find them (see "Local AI detector" below)
+python -m veil mask notes.txt --local-llm http://127.0.0.1:11434/v1 qwen2.5:3b
+```
+
+Once a name has been found, it stays hidden for the rest of the session,
+even in later messages where the detector would have missed it.
+
+### Local AI detector (Ollama, Windows/Mac/Linux)
+
+1. Install Ollama from https://ollama.com/download and open it once.
+2. Download a small model (about 2 GB):
+   ```bash
+   ollama pull qwen2.5:3b
+   ```
+3. Run any command with `--local-llm`:
+   ```bash
+   echo Call john smith 9123 4567 chlyde iza | python -m veil mask - --local-llm http://127.0.0.1:11434/v1 qwen2.5:3b
+   ```
+
+The model runs entirely on your computer. If it isn't running, pii-veil stops
+with an error instead of silently sending unmasked text.
 
 ### As a drop-in proxy (no code changes to your app)
 
@@ -88,8 +121,9 @@ python -m veil demo --local-llm http://127.0.0.1:11434/v1 qwen2.5:3b
 These are the open problems this prototype is meant to explore:
 
 1. **Detection misses = leaks.** The rule detector only knows common first
-   names, and lower-case or unusual names slip through. Use `--terms` for
-   known sensitive words and `--local-llm` for better recall.
+   names. Unusual names and usernames slip through unless you pass them with
+   `--names` or use `--local-llm`. Lower-case names that are also ordinary
+   words ("mark", "jack", "ha") are deliberately left alone.
 2. **Context still leaks.** Changing "John" to "Vaughn" doesn't hide "the CFO
    of our Penang branch who resigned in March". Details like job title, place
    and dates can still identify someone. Generalising these values is the next
@@ -110,7 +144,7 @@ veil/fakes.py    fake name, company and domain pools
 veil/llm.py      mock (emulated) cloud AI, Anthropic, OpenAI-compatible
 veil/proxy.py    OpenAI-compatible privacy proxy
 veil/cli.py      demo / mask / ask / serve
-tests/           14 offline tests
+tests/           20 offline tests
 ```
 
 ## Contributing ideas

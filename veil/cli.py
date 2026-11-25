@@ -7,6 +7,7 @@
 
 Options shared by ask/serve/demo:
   --terms a,b,c          extra confidential words (client names, project names)
+  --names a,b / --names-file F   people the built-in name list doesn't know
   --local-llm URL MODEL  use a self-hosted model (e.g. Ollama) to find PII too
 """
 from __future__ import annotations
@@ -26,7 +27,10 @@ TASK = "Summarise this customer email and draft a short reply.\n\n"
 
 def _shield(args) -> Shield:
     terms = [t.strip() for t in (args.terms or "").split(",") if t.strip()]
-    rules = RuleDetector(custom_terms=terms)
+    names = [t.strip() for t in (args.names or "").split(",") if t.strip()]
+    if args.names_file:
+        names += [ln.strip() for ln in Path(args.names_file).read_text(encoding="utf-8").splitlines() if ln.strip()]
+    rules = RuleDetector(custom_terms=terms, custom_names=names)
     if args.local_llm:
         url, model = args.local_llm
         return Shield(detector=LocalLLMDetector(url, model, fallback=rules))
@@ -108,7 +112,9 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(sp):
-        sp.add_argument("--terms", help="comma-separated extra confidential words")
+        sp.add_argument("--terms", help="comma-separated extra confidential words (become fake companies)")
+        sp.add_argument("--names", help="comma-separated people to always hide, e.g. \"chlyde iza,mr ha\"")
+        sp.add_argument("--names-file", help="text file with one person name per line (e.g. a staff list)")
         sp.add_argument("--local-llm", nargs=2, metavar=("URL", "MODEL"),
                         help="self-hosted detector, e.g. http://127.0.0.1:11434/v1 qwen2.5:3b")
 

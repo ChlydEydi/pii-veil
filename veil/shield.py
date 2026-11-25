@@ -23,7 +23,7 @@ import string
 from pathlib import Path
 
 from . import fakes
-from .detect import KNOWN_FIRST, Entity, RuleDetector
+from .detect import AMBIGUOUS_LOWER, COMMON_WORDS, KNOWN_FIRST, Entity, RuleDetector, resolve_overlaps
 
 # Shared mailbox names carry no personal data; leave them readable for the AI.
 ROLE_MAILBOXES = {"support", "info", "admin", "sales", "hello", "contact", "help",
@@ -44,11 +44,21 @@ class Shield:
         self._used: set[str] = set()
         self._originals: dict[str, str] = {}  # "table:lowered" -> original spelling
         self._forbid = ""  # text being masked; fakes must not already occur in it
+        # Sensitive values found earlier in this session (lower-case -> kind).
+        # They are masked in later text even if the detector misses them there.
+        self._known: dict[str, str] = {}
 
     # ------------------------------------------------------------ public API
     def mask(self, text: str) -> str:
         """Replace every detected sensitive value with its fake twin."""
         entities = self.detector.detect(text)
+        for known, kind in self._known.items():
+            for m in re.finditer(rf"(?<![\w@.]){re.escape(known)}(?![\w@])", text, re.I):
+                entities.append(Entity(m.start(), m.end(), kind, m.group()))
+        entities = resolve_overlaps(entities)
+        for e in entities:
+            if _worth_remembering(e):
+                self._known[e.text.lower()] = e.kind
         self._forbid = text.lower()
         out, pos = [], 0
         for e in entities:
@@ -96,6 +106,7 @@ class Shield:
             "secret": base64.b64encode(self.secret).decode(),
             "tables": self.tables,
             "originals": self._originals,
+            "known": self._known,
         }).encode()
         Path(path).write_bytes(Fernet(_key_from_password(password)).encrypt(payload))
 
@@ -107,6 +118,7 @@ class Shield:
         s = cls(detector=detector, secret=base64.b64decode(data["secret"]))
         s.tables = data["tables"]
         s._originals = data.get("originals", {})
+        s._known = data.get("known", {})
         s._used = {v.lower() for t in s.tables.values() for v in t.values()}
         return s
 
@@ -165,8 +177,10 @@ class Shield:
         words = name.split()
         out = []
         for i, w in enumerate(words):
-            is_first = i == 0 and (len(words) > 1 or w.lower() in KNOWN_FIRST)
-            out.append(self._fake_first(w) if is_first else self._fake_last(w))
+            is_first = i == 0 and (len(words) > 1 or w.lower() in KNOWN_FIRST
+                                   or w.lower() in self.tables["first"])
+            fake = self._fake_first(w) if is_first else self._fake_last(w)
+            out.append(fake.lower() if w.islower() else fake)  # "john" -> "arlen"
         # keep the original whitespace between words
         seps = re.findall(r"\s+", name)
         return "".join(o + (seps[i] if i < len(seps) else "") for i, o in enumerate(out))
@@ -234,6 +248,15 @@ def _fernet():
         raise RuntimeError("The encrypted vault needs the 'cryptography' package: "
                            "python -m pip install cryptography") from None
     return Fernet
+
+
+def _worth_remembering(e: Entity) -> bool:
+    """Remember names/values for later messages, but never ordinary words."""
+    words = e.text.lower().split()
+    if e.kind != "PERSON" or len(words) > 1:
+        return len(e.text) >= 3
+    w = words[0]
+    return len(w) >= 3 and w not in COMMON_WORDS and w not in AMBIGUOUS_LOWER
 
 
 def _key_from_password(password: str) -> bytes:
