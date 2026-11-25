@@ -226,8 +226,30 @@ class LocalLLMDetector:
                 continue
             kind = kind if kind in {"PERSON", "EMAIL", "PHONE", "NRIC"} else "CUSTOM"
             for m in re.finditer(rf"(?<!\w){re.escape(needle)}(?!\w)", text, re.I):
-                found.append(Entity(m.start(), m.end(), kind, m.group()))
+                start, end = m.start(), m.end()
+                if kind == "PERSON":
+                    start, end = _extend_name(text, start, end)
+                found.append(Entity(start, end, kind, text[start:end]))
         return resolve_overlaps(found)
+
+
+def _extend_name(text: str, start: int, end: int) -> tuple[int, int]:
+    """Small models often return half a name ("chlyde" of "chlyde iza").
+    Grow the match by one neighbouring word on each side when that word is
+    not an ordinary word, so the rest of the name is hidden too."""
+    words = list(WORD_RE.finditer(text))
+
+    def name_like(m: re.Match) -> bool:
+        w = m.group()
+        return w.isalpha() and len(w) >= 2 and w.lower() not in COMMON_WORDS
+
+    after = next((m for m in words if m.start() >= end), None)
+    if after and text[end:after.start()].strip(" ") == "" and name_like(after):
+        end = after.end()
+    before = next((m for m in reversed(words) if m.end() <= start), None)
+    if before and text[before.end():start].strip(" ") == "" and name_like(before):
+        start = before.start()
+    return start, end
 
 
 PRIORITY = {"EMAIL": 0, "URL": 1, "NRIC": 2, "CARD": 3, "IP": 4, "PHONE": 5, "PERSON": 6, "CUSTOM": 7}

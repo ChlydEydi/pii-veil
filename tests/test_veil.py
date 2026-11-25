@@ -212,5 +212,21 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual(shield.unmask(masked), text)
 
 
+class HalfNameTests(unittest.TestCase):
+    def test_half_name_from_local_model_is_extended(self):
+        srv = _JSONServer(lambda body: {"choices": [{"message": {"content":
+              '{"entities":[{"text":"chlyde","kind":"PERSON"}]}'}}]})
+        try:
+            shield = Shield(detector=LocalLLMDetector(srv.url, "tiny"))
+            masked = shield.mask("Call john smith 9123 4567 chlyde iza")
+        finally:
+            srv.httpd.shutdown()
+            srv.httpd.server_close()
+        for s in ("chlyde", "iza", "john", "smith"):
+            self.assertFalse(contains(masked, s), f"{s!r} leaked: {masked}")
+        self.assertTrue(masked.startswith("Call "))  # ordinary word untouched
+        self.assertEqual(shield.unmask(masked), "Call john smith 9123 4567 chlyde iza")
+
+
 if __name__ == "__main__":
     unittest.main()
