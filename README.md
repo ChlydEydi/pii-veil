@@ -17,7 +17,12 @@ fake people. The mapping between real and fake never leaves your side.
 > Status: **proof of concept**. It works end to end and has tests, but it is
 > not production-ready. See [Limits](#limits-read-this).
 
-## Try it in 30 seconds
+## 🆕 Use it inside claude.ai (browser extension)
+
+No commands needed: install the Chrome extension and chat with Claude as
+usual. See **[extension/README.md](extension/README.md)**.
+
+## Try the command-line version in 30 seconds
 
 Python 3.10+ and nothing else. The encrypted vault feature also needs `cryptography`.
 
