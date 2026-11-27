@@ -306,16 +306,19 @@
     el.dispatchEvent(new Event("input", { bubbles: true }));
   }
   async function protectFieldsThenClick(btn) {
+    // "Use this version" only copies the draft into the message box; nothing is sent yet
+    const copiesToBox = /use this version/i.test((btn.innerText || btn.getAttribute("aria-label") || "").trim());
     draftPause = true;
     try {
       let n = 0;
       for (const el of fieldsNear(btn)) {
         const v = fieldValue(el);
         const { text: m, entities } = maskText(v);
-        if (entities.length && m !== v) { await setField(el, m); n += entities.length; lastSent = m; }
+        if (entities.length && m !== v) { await setField(el, m); n += entities.length; if (!copiesToBox) lastSent = m; }
       }
       save(); render();
-      if (n) toast(`🛡 Hid ${n} item${n > 1 ? "s" : ""} before saving to Claude`);
+      if (n && copiesToBox) toast("🛡 The draft is in the message box with fake names. That's what Claude will see; the reply will show the real names.");
+      else if (n) toast(`🛡 Hid ${n} item${n > 1 ? "s" : ""} before saving to Claude`);
       await sleep(120);
       bypass = true;
       try { btn.click(); } finally { bypass = false; }

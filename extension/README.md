@@ -49,7 +49,8 @@ Click the badge and "What Claude saw" to prove the real names never left.
 - Real values are restored **on your screen only**. Claude's servers keep the fake version.
 - Each chat has its own fakes, so chats can't be linked by fake names. Names you
   found once are still recognised in every chat.
-- *Use this version* on a draft card puts the fakes back before saving.
+- *Use this version* on a draft card copies the draft into the message box **with the fake
+  names** (that's what Claude will see). Send it as usual; the reply shows the real names.
 - The draft card may show *Reset changes* / *Use this version* even if you didn't edit it
   (pii-veil swapped the real names in). Both are safe to click.
 - The real ↔ fake list is stored only in this browser. "Forget all hidden items" deletes it,
