@@ -41,7 +41,10 @@ Click the badge and "What Claude saw" to prove the real names never left.
 
 - **Plain text only.** Images and files are sent as they are; pii-veil shows a warning.
 - Unusual names (e.g. "chlyde iza") need to be added to **Always hide**.
-- Claude's **Artifacts** panel and the built-in **Copy** button may show fake names.
+- Claude's **draft cards** (e.g. email drafts with *Send via Gmail*) show real names.
+  Claude's **Artifacts** panel may still show fake names.
+- If you **edit an earlier message**, its edit box shows the fake names. That is on
+  purpose, so saving the edit can't send real names to Claude.
 - Real values are restored **on your screen only**. Claude's servers keep the fake version.
 - The real ↔ fake list is stored only in this browser. "Forget all hidden items" deletes it,
   after which old chats show fake names.

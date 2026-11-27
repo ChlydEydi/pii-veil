@@ -155,6 +155,7 @@
       pending.clear();
       if (!enabled || !shield.mapping().length) return;
       for (const n of nodes) unmaskTree(n);
+      unmaskDraftFields();
     }, 30);
   }
   function skip(el) {
@@ -179,6 +180,23 @@
       else m.addedNodes.forEach((n) => scheduleUnmask(n));
     }
   }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
+  // Claude's email/message draft cards use text boxes labelled "Draft body" / "Draft subject".
+  // Put the real values in them, so "Copy" and "Send via Gmail" use real names.
+  // (Only these boxes: the chat box and "edit message" boxes stay fake-only.)
+  const DRAFT_FIELDS = 'textarea[aria-label^="Draft" i], input[aria-label^="Draft" i]';
+  function unmaskDraftFields() {
+    if (!enabled || !shield.mapping().length) return;
+    document.querySelectorAll(DRAFT_FIELDS).forEach((el) => {
+      if (el === document.activeElement) return; // don't fight the user while typing
+      const v = el.value, real = shield.unmask(v);
+      if (real === v) return;
+      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value").set.call(el, real); // works with React-controlled boxes
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  setInterval(unmaskDraftFields, 800);
 
   // copying Claude's answer: give the user the real values
   document.addEventListener("copy", (e) => {
