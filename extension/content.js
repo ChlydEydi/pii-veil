@@ -302,9 +302,9 @@
       for (const el of fieldsNear(btn)) {
         const v = fieldValue(el);
         const { text: m, entities } = maskText(v);
-        if (entities.length && m !== v) { await setField(el, m); n += entities.length; }
+        if (entities.length && m !== v) { await setField(el, m); n += entities.length; lastSent = m; }
       }
-      save();
+      save(); render();
       if (n) toast(`🛡 Hid ${n} item${n > 1 ? "s" : ""} before saving to Claude`);
       await sleep(120);
       bypass = true;

@@ -168,7 +168,14 @@
 
     /** Mask text. names = user's "Always hide" list. Returns {text, entities}. */
     mask(text, names) {
-      const entities = detect(text, { names: names || [], known: this.known });
+      // Never mask our own fakes again (e.g. when you edit a message that already holds them)
+      const fakes = new Set(Object.values(this.tables).flatMap((t) => Object.values(t).map((v) => v.toLowerCase())));
+      const isFake = (e) => {
+        const low = e.text.toLowerCase();
+        if (fakes.has(low)) return true;
+        return e.kind === "PERSON" && low.split(/\s+/).every((w) => fakes.has(w));
+      };
+      const entities = detect(text, { names: names || [], known: this.known }).filter((e) => !isFake(e));
       for (const e of entities) if (worthRemembering(e)) this.known[e.text.toLowerCase()] = e.kind;
       this.forbid = text.toLowerCase();
       let out = "", pos = 0;
@@ -177,6 +184,13 @@
     }
 
     unmask(text) {
+      // Up to 3 passes: also repairs fakes-of-fakes created by version 0.2.0
+      let out = text;
+      for (let i = 0; i < 3; i++) { const next = this.unmaskOnce(out); if (next === out) break; out = next; }
+      return out;
+    }
+
+    unmaskOnce(text) {
       const pairs = this.reversePairs();
       if (!pairs.length || !text) return text;
       const lookup = new Map(pairs.map(([f, r]) => [f.toLowerCase(), r]));
