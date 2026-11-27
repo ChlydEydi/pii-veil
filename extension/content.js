@@ -32,12 +32,20 @@
     loaded = true;
     switchChat(true);
   });
+  // After the extension is updated, an old copy can keep running in open tabs,
+  // cut off from storage. It must not send anything; the tab needs a refresh.
+  function alive() { try { return !!(chrome.runtime && chrome.runtime.id); } catch { return false; } }
+  const REFRESH_MSG = "⚠️ pii-veil was updated. Press F5 to refresh this page, then send again. Your message is still in the box.";
+
   function save() {
     if (currentKey && currentKey !== "new") {
       chats[currentKey] = { state: shield.toJSON(), last: lastSent };
       cache.set(currentKey, shield);
     }
-    store.set({ veilChats: chats, veilKnown: known, veilNames: names, veilEnabled: enabled });
+    if (!alive()) return;
+    try {
+      store.set({ veilChats: chats, veilKnown: known, veilNames: names, veilEnabled: enabled }).catch((e) => LOG("save failed", e));
+    } catch (e) { LOG("save failed", e); }
   }
 
   // Which chat are we in? claude.ai/chat/<id>, or "new" before the first message.
@@ -103,6 +111,7 @@
     if (!c || !c.contains(e.target)) return;
     if (!composerText(c).trim()) return;
     stop(e);
+    if (!alive()) return toast(REFRESH_MSG, true);
     protectAndSend(c);
   }, true);
 
@@ -113,6 +122,7 @@
     const c = composer();
     if (!c || !composerText(c).trim()) return;
     stop(e);
+    if (!alive()) return toast(REFRESH_MSG, true);
     protectAndSend(c);
   }, true);
 
@@ -153,7 +163,7 @@
       realSend();
     } catch (err) {
       LOG(err);
-      toast("⚠️ Not sent: pii-veil hit an error. Your message is still in the box.", true);
+      toast(alive() ? `⚠️ Not sent: pii-veil hit an error (${(err && err.message) || err}). Your message is still in the box.` : REFRESH_MSG, true);
     } finally {
       busy = false;
     }

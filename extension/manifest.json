@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "pii-veil for Claude",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Hides real names, emails, phone numbers and IDs from Claude with realistic fakes, and shows you the real ones in the answer.",
   "permissions": ["storage"],
   "content_scripts": [

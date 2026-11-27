@@ -14,7 +14,8 @@ receives the fakes. When Claude answers, you see the real names again.
 5. Open or refresh https://claude.ai. A **🛡 pii-veil ON** badge appears at the bottom right.
 
 After an update (`git pull` or a new ZIP), click the ↻ reload icon on the
-pii-veil card in `chrome://extensions`, then refresh claude.ai.
+pii-veil card in `chrome://extensions`, then **refresh every open claude.ai tab** (F5).
+If you forget, pii-veil blocks sending and asks you to refresh.
 
 ## Use it
 
