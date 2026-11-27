@@ -22,7 +22,7 @@ pii-veil card in `chrome://extensions`, then refresh claude.ai.
   A short note says how many items were hidden.
 - Click the **🛡 badge** to see:
   - **What Claude saw**: the exact masked text that was sent
-  - **Hidden items**: each real value → its fake
+  - **Hidden items**: each real value → its fake. Click **✕** to forget one item
   - **Always hide**: names the built-in list doesn't know (one per line)
   - an **on/off switch**
 - Copying text from Claude's answer gives you the real names.
@@ -46,6 +46,8 @@ Click the badge and "What Claude saw" to prove the real names never left.
 - If you **edit an earlier message**, its edit box shows the fake names. That is on
   purpose, so saving the edit can't send real names to Claude.
 - Real values are restored **on your screen only**. Claude's servers keep the fake version.
+- The same real name gets the same fake in every chat (one list for all chats).
+- The draft card's *Use this version* button may save the real names back to Claude. Don't click it.
 - The real ↔ fake list is stored only in this browser. "Forget all hidden items" deletes it,
   after which old chats show fake names.
 - If claude.ai changes its page design, the extension may need an update.

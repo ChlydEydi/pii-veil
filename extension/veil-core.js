@@ -199,6 +199,21 @@
       return rows;
     }
 
+    /** Forget one real value (and anything remembered from it). */
+    forget(real) {
+      const key = real.toLowerCase();
+      for (const t of ["first", "last", "value"]) {
+        if (this.tables[t][key] !== undefined) {
+          this.used.delete(this.tables[t][key].toLowerCase());
+          delete this.tables[t][key];
+          delete this.originals[`${t}:${key}`];
+        }
+      }
+      for (const k of Object.keys(this.known)) {
+        if (k === key || k.split(/\s+/).includes(key)) delete this.known[k];
+      }
+    }
+
     /** Real values that would still leak in `text` (safety check before sending). */
     leaks(text) {
       return this.mapping().map(([r]) => r).filter((r) => r.length > 1 && new RegExp(`(?<![\\w@.])${esc(r)}(?![\\w@])`, "i").test(text));

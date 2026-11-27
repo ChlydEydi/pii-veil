@@ -38,7 +38,14 @@
     return document.querySelector('button[aria-label="Send message"]')
       || document.querySelector('button[aria-label*="Send" i]');
   }
-  const composerText = (el) => (el.innerText || "").replace(/ /g, " ").replace(/\n+$/, "");
+  // One line per paragraph, like the editor itself (innerText adds extra blank lines).
+  function composerText(el) {
+    const blocks = el.querySelectorAll(":scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > li, :scope > div");
+    const raw = blocks.length && blocks.length === el.children.length
+      ? [...blocks].map((b) => b.innerText.replace(/\n+$/, "")).join("\n")
+      : el.innerText || "";
+    return raw.replace(/\u00a0/g, " ").replace(/\n+$/, "");
+  }
 
   // ------------------------------------------------------------ intercept send
   window.addEventListener("keydown", (e) => {
@@ -252,6 +259,8 @@
       padding: 8px; margin: 0; max-height: 160px; overflow: auto; font: 12px/1.45 ui-monospace, Consolas, monospace; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; } td { padding: 3px 4px; border-bottom: 1px solid #f4f4f5; vertical-align: top; word-break: break-all; }
     td.arrow { color: #a1a1aa; width: 16px; } td.fake { color: #3730a3; }
+    td.x { width: 24px; text-align: right; } button.forget { border: none; background: none; color: #a1a1aa; padding: 0 4px; font-size: 12px; }
+    button.forget:hover { color: #b91c1c; }
     textarea { width: 100%; min-height: 60px; border: 1px solid #d4d4d8; border-radius: 8px; padding: 6px; font-size: 12px; resize: vertical; }
     button { border: 1px solid #d4d4d8; background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
     button.primary { background: #4f46e5; color: #fff; border-color: #4f46e5; }
@@ -301,11 +310,18 @@
     $("badge").className = "badge" + (enabled ? "" : " off");
     $("badge").textContent = enabled ? `🛡 pii-veil ON${rows.length ? ` · ${rows.length} hidden` : ""}` : "pii-veil OFF";
     $("toggle").className = "switch" + (enabled ? " on" : "");
-    $("last").textContent = lastSent || "Nothing sent yet.";
+    $("last").textContent = (lastSent || "").replace(/\n{3,}/g, "\n\n") || "Nothing sent yet.";
     $("last").className = lastSent ? "" : "muted";
     $("map").innerHTML = rows.length
-      ? "<table>" + rows.map(([r, f]) => `<tr><td>${escHtml(r)}</td><td class="arrow">→</td><td class="fake">${escHtml(f)}</td></tr>`).join("") + "</table>"
+      ? "<table>" + rows.map(([r, f], i) => `<tr><td>${escHtml(r)}</td><td class="arrow">→</td><td class="fake">${escHtml(f)}</td>` +
+          `<td class="x"><button class="forget" data-i="${i}" title="Forget this item">✕</button></td></tr>`).join("") + "</table>"
       : '<span class="muted">Nothing hidden yet.</span>';
+    ui.querySelectorAll("button.forget").forEach((b) => (b.onclick = () => {
+      const [real] = rows[+b.dataset.i];
+      shield.forget(real);
+      save(); render();
+      toast(`Forgot "${real}". Old messages with it will show the fake name now.`);
+    }));
     if (ui.activeElement !== $("names")) $("names").value = names.join("\n");
   }
   const escHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
