@@ -138,13 +138,16 @@
       const { text: masked, entities } = maskText(original);
       save();
       if (entities.length) {
-        // Safety: only send if the box holds EXACTLY the masked text
-        // (no real names left, nothing duplicated).
-        const ok = await replaceComposer(c, masked);
+        await replaceComposer(c, masked);
         const now = composerText(composer() || c);
-        if (!ok) {
-          toast("⚠️ Not sent: pii-veil couldn't prepare your message safely. Check the message box, then press Enter again.", true);
-          LOG("replace failed", JSON.stringify(now).slice(0, 300));
+        // Safety: the box must now hold exactly the masked text. If not, and any
+        // real value is still in there (even glued to other text), don't send.
+        const lowNow = now.toLowerCase();
+        const leaked = norm(now) === norm(masked) ? [] :
+          shield.mapping().map(([r]) => r).filter((r) => r.length > 1 && lowNow.includes(r.toLowerCase()));
+        if (leaked.length) {
+          toast(`⚠️ Not sent: pii-veil couldn't hide ${leaked.slice(0, 3).join(", ")}. Please try again.`, true);
+          LOG("leak check failed", leaked);
           return;
         }
         lastSent = now;
@@ -168,32 +171,25 @@
 
   const norm = (t) => t.replace(/\s+/g, " ").trim();
 
-  // Empty the box completely, then put the masked text in. Try two ways.
-  // Returns true only if the box now holds exactly `text`.
   async function replaceComposer(c, text) {
-    for (const how of ["paste", "insertText"]) {
-      const el = composer() && c.classList.contains("ProseMirror") ? composer() : c;
-      el.focus();
-      for (let i = 0; i < 2 && composerText(el).trim(); i++) {
-        selectAll(el);
-        await sleep(50); // let the editor notice the selection
-        document.execCommand("delete");
-        await sleep(50);
-      }
-      if (how === "paste") {
-        try {
-          const dt = new DataTransfer();
-          dt.setData("text/plain", text);
-          el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
-        } catch (e) { LOG("paste failed", e); }
-      } else {
-        document.execCommand("insertText", false, text);
-      }
-      await sleep(80);
-      if (norm(composerText(el)) === norm(text)) return true;
-      LOG(`replace via ${how} gave`, JSON.stringify(composerText(el)).slice(0, 200));
-    }
-    return false;
+    c.focus();
+    selectAll(c);
+    await sleep(50); // let the editor notice the selection before pasting
+    // 1st try: a synthetic paste (ProseMirror turns lines into paragraphs properly)
+    try {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      c.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    } catch (e) { LOG("paste failed", e); }
+    await sleep(80);
+    if (norm(composerText(composer() || c)) === norm(text)) return;
+    // 2nd try: insertText
+    const c2 = composer() || c;
+    c2.focus();
+    selectAll(c2);
+    await sleep(50);
+    document.execCommand("insertText", false, text);
+    await sleep(80);
   }
 
   function selectAll(el) {
