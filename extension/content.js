@@ -8,25 +8,74 @@
   const { Shield } = window.PiiVeil;
   const LOG = (...a) => console.debug("[pii-veil]", ...a);
 
-  let shield = new Shield();
-  let names = [];          // "Always hide" list
+  let shield = new Shield();  // the CURRENT chat's real <-> fake list
+  let names = [];             // "Always hide" list (all chats)
   let enabled = true;
-  let lastSent = "";       // last masked message (what Claude saw)
+  let lastSent = "";          // what Claude saw (current chat, last message)
   let loaded = false;
-  let bypass = false;      // true while WE trigger the real send
+  let bypass = false;         // true while WE trigger the real send
+  let chats = {};             // chatId -> {state, last}   (one list per chat)
+  let known = {};             // names found before, in any chat -> always detect them
+  let legacy = null;          // list from version 0.1 (one list for all chats)
+  let currentKey = null;
+  const cache = new Map();    // chatId -> Shield, for sidebar titles
 
   // ------------------------------------------------------------ storage
   const store = chrome.storage.local;
-  const ready = store.get(["veilState", "veilNames", "veilEnabled", "veilLast"]).then((d) => {
-    if (d.veilState) shield = new Shield(d.veilState);
+  const ready = store.get(["veilChats", "veilKnown", "veilLegacy", "veilState", "veilNames", "veilEnabled"]).then((d) => {
+    chats = d.veilChats || {};
+    known = d.veilKnown || {};
+    legacy = d.veilLegacy || d.veilState || null;       // migrate the old single list
+    if (d.veilState) { store.set({ veilLegacy: d.veilState }); store.remove("veilState"); }
     names = d.veilNames || [];
     enabled = d.veilEnabled !== false;
-    lastSent = d.veilLast || "";
     loaded = true;
+    switchChat(true);
+  });
+  function save() {
+    if (currentKey && currentKey !== "new") {
+      chats[currentKey] = { state: shield.toJSON(), last: lastSent };
+      cache.set(currentKey, shield);
+    }
+    store.set({ veilChats: chats, veilKnown: known, veilNames: names, veilEnabled: enabled });
+  }
+
+  // Which chat are we in? claude.ai/chat/<id>, or "new" before the first message.
+  const chatKey = () => (location.pathname.match(/\/chat\/([0-9a-f-]{8,})/i) || [])[1] || "new";
+
+  function switchChat(force) {
+    if (!loaded) return;
+    const key = chatKey();
+    if (key === currentKey && !force) return;
+    if (currentKey === "new" && key !== "new" && shield.mapping().length) {
+      // the new chat just got its id: keep the list we used for its first message
+      currentKey = key;
+      save();
+    } else {
+      currentKey = key;
+      if (key === "new") { shield = new Shield(); lastSent = ""; }
+      else if (chats[key]) { shield = new Shield(chats[key].state); lastSent = chats[key].last || ""; }
+      else if (legacy) { shield = new Shield(JSON.parse(JSON.stringify(legacy))); lastSent = ""; } // chats from v0.1
+      else { shield = new Shield(); lastSent = ""; }
+    }
     render();
     scheduleUnmask(document.body);
-  });
-  const save = () => store.set({ veilState: shield.toJSON(), veilNames: names, veilEnabled: enabled, veilLast: lastSent });
+  }
+  setInterval(switchChat, 400); // claude.ai changes pages without reloading
+
+  function shieldForChat(id) {
+    if (id === currentKey) return shield;
+    if (!cache.has(id)) cache.set(id, chats[id] ? new Shield(chats[id].state) : legacy ? new Shield(JSON.parse(JSON.stringify(legacy))) : null);
+    return cache.get(id);
+  }
+
+  // mask with this chat's fakes, but detect names found in ANY chat
+  function maskText(text) {
+    shield.known = Object.assign({}, known, shield.known);
+    const res = shield.mask(text, names);
+    Object.assign(known, shield.known);
+    return res;
+  }
 
   // ------------------------------------------------------------ claude.ai DOM
   function composer() {
@@ -76,7 +125,7 @@
     try {
       if (!loaded) await ready;
       const original = composerText(c);
-      const { text: masked, entities } = shield.mask(original, names);
+      const { text: masked, entities } = maskText(original);
       save();
       if (entities.length) {
         await replaceComposer(c, masked);
@@ -151,7 +200,7 @@
         c && c.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true }));
       }
     } finally {
-      setTimeout(() => (bypass = false), 300);
+      bypass = false; // click()/dispatchEvent run synchronously, so the pass is over
     }
   }
 
@@ -168,7 +217,7 @@
       scheduled = false;
       const nodes = [...pending];
       pending.clear();
-      if (!enabled || !shield.mapping().length) return;
+      if (!enabled) return;
       for (const n of nodes) unmaskTree(n);
       unmaskDraftFields();
     }, 30);
@@ -186,7 +235,11 @@
   }
   function unmaskText(t) {
     if (!t.nodeValue || t.nodeValue.length < 2 || skip(t.parentElement)) return;
-    const real = shield.unmask(t.nodeValue);
+    const link = t.parentElement.closest('a[href*="/chat/"]');
+    const id = link && (link.getAttribute("href").match(/\/chat\/([0-9a-f-]{8,})/i) || [])[1];
+    const sh = id ? shieldForChat(id) : shield;
+    if (!sh) return;
+    const real = sh.unmask(t.nodeValue);
     if (real !== t.nodeValue) t.nodeValue = real;
   }
   new MutationObserver((muts) => {
@@ -200,8 +253,9 @@
   // Put the real values in them, so "Copy" and "Send via Gmail" use real names.
   // (Only these boxes: the chat box and "edit message" boxes stay fake-only.)
   const DRAFT_FIELDS = 'textarea[aria-label^="Draft" i], input[aria-label^="Draft" i]';
+  let draftPause = false;
   function unmaskDraftFields() {
-    if (!enabled || !shield.mapping().length) return;
+    if (!enabled || draftPause || !shield.mapping().length) return;
     document.querySelectorAll(DRAFT_FIELDS).forEach((el) => {
       if (el === document.activeElement) return; // don't fight the user while typing
       const v = el.value, real = shield.unmask(v);
@@ -219,6 +273,71 @@
       if (t !== document.title) document.title = t;
     }
   }, 800);
+
+  // Other boxes that send text to Claude: "Use this version" on a draft card,
+  // and "Save" when you edit an earlier message. Before those buttons act,
+  // put the fakes back into their boxes (and hide any new real names you typed).
+  const SAVE_LABEL = /^(use this version|save|send|submit|update)$/i;
+  const isComposerBtn = (btn) => btn === sendButton();
+  function fieldsNear(btn) {
+    let box = btn.parentElement;
+    for (let i = 0; i < 7 && box; i++, box = box.parentElement) {
+      const f = [...box.querySelectorAll('textarea, input[type="text"], [contenteditable="true"]')]
+        .filter((el) => el !== composer() && !el.closest("#pii-veil-root"));
+      if (f.length) return f;
+    }
+    return [];
+  }
+  const fieldValue = (el) => (el.isContentEditable ? composerText(el) : el.value);
+  async function setField(el, text) {
+    if (el.isContentEditable) return replaceComposer(el, text);
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, text);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  async function protectFieldsThenClick(btn) {
+    draftPause = true;
+    try {
+      let n = 0;
+      for (const el of fieldsNear(btn)) {
+        const v = fieldValue(el);
+        const { text: m, entities } = maskText(v);
+        if (entities.length && m !== v) { await setField(el, m); n += entities.length; }
+      }
+      save();
+      if (n) toast(`🛡 Hid ${n} item${n > 1 ? "s" : ""} before saving to Claude`);
+      await sleep(120);
+      bypass = true;
+      try { btn.click(); } finally { bypass = false; }
+    } finally {
+      setTimeout(() => { draftPause = false; }, 1500);
+    }
+  }
+  window.addEventListener("click", (e) => {
+    if (bypass || !enabled) return;
+    const btn = e.target.closest && e.target.closest("button");
+    if (!btn || isComposerBtn(btn) || btn.closest("#pii-veil-root")) return;
+    const label = (btn.innerText || btn.getAttribute("aria-label") || "").trim();
+    if (!SAVE_LABEL.test(label)) return;
+    const risky = fieldsNear(btn).some((el) => maskText(fieldValue(el)).text !== fieldValue(el));
+    if (!risky) return;
+    stop(e);
+    protectFieldsThenClick(btn);
+  }, true);
+  // Enter inside an edit-message box works like its Save button
+  window.addEventListener("keydown", (e) => {
+    if (bypass || !enabled || e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+    const el = e.target;
+    if (!el || el === composer() || (composer() && composer().contains(el))) return;
+    if (!(el.tagName === "TEXTAREA" || el.isContentEditable) || (el.getAttribute("aria-label") || "").startsWith("Draft")) return;
+    if (maskText(fieldValue(el)).text === fieldValue(el)) return;
+    let box = el.parentElement, btn = null;
+    for (let i = 0; i < 7 && box && !btn; i++, box = box.parentElement)
+      btn = [...box.querySelectorAll("button")].find((b) => SAVE_LABEL.test((b.innerText || b.getAttribute("aria-label") || "").trim()));
+    if (!btn) return;
+    stop(e);
+    protectFieldsThenClick(btn);
+  }, true);
 
   // copying Claude's answer: give the user the real values
   document.addEventListener("copy", (e) => {
@@ -279,13 +398,13 @@
     <p class="sub">Claude only receives fake names and details. You see the real ones.</p>
     <h4>What Claude saw (last message)</h4>
     <pre id="last"></pre>
-    <h4>Hidden items (real → fake)</h4>
+    <h4>Hidden in this chat (real → fake)</h4>
     <div id="map"></div>
     <h4>Always hide these names</h4>
     <p class="sub">One per line. For people the built-in list doesn't know.</p>
     <textarea id="names" placeholder="chlyde iza&#10;Acme Logistics"></textarea>
     <div class="row" style="margin-top:6px"><button class="primary" id="saveNames">Save list</button>
-      <button class="danger" id="clear">Forget all hidden items</button></div>
+      <button class="danger" id="clear">Forget all in this chat</button></div>
   </div>
   <div class="toast" id="toast"></div>`;
   const $ = (id) => ui.getElementById(id);
@@ -299,10 +418,10 @@
   };
   let armed = false;
   $("clear").onclick = () => {
-    if (!armed) { armed = true; $("clear").textContent = "Click again to confirm"; setTimeout(() => { armed = false; $("clear").textContent = "Forget all hidden items"; }, 3000); return; }
-    armed = false; $("clear").textContent = "Forget all hidden items";
+    if (!armed) { armed = true; $("clear").textContent = "Click again to confirm"; setTimeout(() => { armed = false; $("clear").textContent = "Forget all in this chat"; }, 3000); return; }
+    armed = false; $("clear").textContent = "Forget all in this chat";
     shield = new Shield(); lastSent = ""; save(); render();
-    toast("Forgot all hidden items. Old chats will show fake names now.");
+    toast("Forgot all hidden items in this chat. Its old messages will show fake names now.");
   };
 
   function render() {
@@ -319,6 +438,8 @@
     ui.querySelectorAll("button.forget").forEach((b) => (b.onclick = () => {
       const [real] = rows[+b.dataset.i];
       shield.forget(real);
+      const key = real.toLowerCase();
+      for (const k of Object.keys(known)) if (k === key || k.split(/\s+/).includes(key)) delete known[k];
       save(); render();
       toast(`Forgot "${real}". Old messages with it will show the fake name now.`);
     }));
