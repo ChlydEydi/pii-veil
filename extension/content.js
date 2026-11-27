@@ -415,7 +415,7 @@
     <div id="map"></div>
     <h4>Always hide these names</h4>
     <p class="sub">One per line. For people the built-in list doesn't know.</p>
-    <textarea id="names" placeholder="e.g.placeholder="chlyde iza&#10;Acme Logistics"#10;Jane Doeplaceholder="chlyde iza&#10;Acme Logistics"#10;Acme Logistics"></textarea>
+    <textarea id="names" placeholder="e.g.&#10;Jane Doe&#10;Acme Logistics"></textarea>
     <div class="row" style="margin-top:6px"><button class="primary" id="saveNames">Save list</button>
       <button class="danger" id="clear">Forget all in this chat</button></div>
   </div>
