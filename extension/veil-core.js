@@ -185,6 +185,9 @@
         const real = lookup.get(got.toLowerCase());
         if (got.length > 1 && got === got.toUpperCase() && got !== got.toLowerCase()) return real.toUpperCase();
         if (got === got.toLowerCase() && real !== real.toLowerCase() && !real.includes("@")) return real.toLowerCase();
+        // Claude wrote "Noemi" for a name you typed as "sarah" -> show "Sarah"
+        if (/^[A-Z][a-z]/.test(got) && real === real.toLowerCase() && !real.includes("@"))
+          return real.replace(/(^|\s)([a-z])/g, (m, sp, c) => sp + c.toUpperCase());
         return real;
       });
     }
