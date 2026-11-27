@@ -196,7 +196,14 @@
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
-  setInterval(unmaskDraftFields, 800);
+  setInterval(() => {
+    unmaskDraftFields();
+    // browser tab title ("Reply to Dorian Kingsley - Claude")
+    if (enabled && shield.mapping().length) {
+      const t = shield.unmask(document.title);
+      if (t !== document.title) document.title = t;
+    }
+  }, 800);
 
   // copying Claude's answer: give the user the real values
   document.addEventListener("copy", (e) => {
