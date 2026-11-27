@@ -74,13 +74,17 @@
       if (entities.length) {
         await replaceComposer(c, masked);
         const now = composerText(composer() || c);
-        const leaked = shield.leaks(now);
+        // Safety: the box must now hold exactly the masked text. If not, and any
+        // real value is still in there (even glued to other text), don't send.
+        const lowNow = now.toLowerCase();
+        const leaked = norm(now) === norm(masked) ? [] :
+          shield.mapping().map(([r]) => r).filter((r) => r.length > 1 && lowNow.includes(r.toLowerCase()));
         if (leaked.length) {
           toast(`⚠️ Not sent: pii-veil couldn't hide ${leaked.slice(0, 3).join(", ")}. Please try again.`, true);
           LOG("leak check failed", leaked);
           return;
         }
-        lastSent = masked;
+        lastSent = now;
         save();
         render();
         toast(`🛡 Hid ${entities.length} item${entities.length > 1 ? "s" : ""} before sending to Claude`);
@@ -99,9 +103,12 @@
     }
   }
 
+  const norm = (t) => t.replace(/\s+/g, " ").trim();
+
   async function replaceComposer(c, text) {
     c.focus();
     selectAll(c);
+    await sleep(50); // let the editor notice the selection before pasting
     // 1st try: a synthetic paste (ProseMirror turns lines into paragraphs properly)
     try {
       const dt = new DataTransfer();
@@ -109,11 +116,12 @@
       c.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
     } catch (e) { LOG("paste failed", e); }
     await sleep(80);
-    if (!shield.leaks(composerText(composer() || c)).length) return;
+    if (norm(composerText(composer() || c)) === norm(text)) return;
     // 2nd try: insertText
     const c2 = composer() || c;
     c2.focus();
     selectAll(c2);
+    await sleep(50);
     document.execCommand("insertText", false, text);
     await sleep(80);
   }
